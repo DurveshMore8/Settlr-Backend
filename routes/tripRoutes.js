@@ -12,6 +12,9 @@ import {
     addItineraryItem,
     updateItineraryItem,
     removeItineraryItem,
+    sendInvitations,
+    getInvitations,
+    resendInvitation,
 } from '../controllers/tripController.js';
 
 const router = express.Router();
@@ -21,10 +24,12 @@ router.use(protect); // All trip routes are protected
 router.route('/').get(getMyTrips).post(createTrip);
 router.post('/join/:inviteCode', joinTrip);
 router.route('/:id').get(getTripById).put(updateTrip).delete(deleteTrip);
-router.patch('/:id/complete', protect, completeTrip);
+router.patch('/:id/complete', completeTrip);
 router.delete('/:id/members/:userId', removeMember);
-router.post('/:id/itinerary', protect, addItineraryItem);
-router.put('/:id/itinerary/:itemId', protect, updateItineraryItem); // Added this route based on the import
-router.delete('/:id/itinerary/:itemId', protect, removeItineraryItem);
+router.route('/:id/invitations').get(getInvitations).post(sendInvitations);
+router.post('/:id/invitations/resend', resendInvitation);
+router.post('/:id/itinerary', addItineraryItem);
+router.put('/:id/itinerary/:itemId', updateItineraryItem);
+router.delete('/:id/itinerary/:itemId', removeItineraryItem);
 
 export default router;

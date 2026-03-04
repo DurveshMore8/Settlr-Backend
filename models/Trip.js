@@ -40,6 +40,25 @@ const tripSchema = new mongoose.Schema(
             enum: ['active', 'completed'],
             default: 'active',
         },
+        invitations: [
+            {
+                email: {
+                    type: String,
+                    required: true,
+                    lowercase: true,
+                    trim: true,
+                },
+                status: {
+                    type: String,
+                    enum: ['pending', 'accepted'],
+                    default: 'pending',
+                },
+                sentAt: {
+                    type: Date,
+                    default: Date.now,
+                },
+            },
+        ],
         itinerary: [
             {
                 type: {
