@@ -5,7 +5,8 @@ import {
     getExpenses,
     updateExpense,
     deleteExpense,
-    getAnalytics
+    getAnalytics,
+    getDashboardAnalytics
 } from '../controllers/expenseController.js';
 
 const router = express.Router({ mergeParams: true });
@@ -26,6 +27,7 @@ router.get('/analytics', getAnalytics);
 // But the controller also handles them
 export const expenseStandaloneRouter = express.Router();
 expenseStandaloneRouter.use(protect);
+expenseStandaloneRouter.get('/dashboard', getDashboardAnalytics);
 expenseStandaloneRouter.route('/:id')
     .put(updateExpense)
     .delete(deleteExpense);

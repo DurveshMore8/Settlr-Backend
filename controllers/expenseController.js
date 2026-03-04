@@ -195,3 +195,100 @@ export const getAnalytics = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+// @desc    Get dashboard analytics (cross-trip, monthly)
+// @route   GET /api/expenses/dashboard
+export const getDashboardAnalytics = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        // Get all trips where user is a member
+        const trips = await Trip.find({ members: userId }).populate('members', 'name email');
+
+        const activeTrips = trips.filter(t => t.status === 'active');
+
+        // Get current month range
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+        // Get ALL user expenses
+        const tripIds = trips.map(t => t._id);
+        const allExpenses = await Expense.find({ trip: { $in: tripIds } });
+
+        // Monthly expenses (where user is payer or participant)
+        const monthlyExpenses = allExpenses.filter(ex => {
+            const d = new Date(ex.createdAt);
+            return d >= startOfMonth && d <= endOfMonth;
+        });
+
+        // User's share of each expense
+        const userMonthlyTotal = monthlyExpenses.reduce((sum, ex) => {
+            if (ex.participants.some(p => p.toString() === userId.toString())) {
+                return sum + (ex.convertedAmount / ex.participants.length);
+            }
+            return sum;
+        }, 0);
+
+        // Category breakdown (user's share)
+        const categoryBreakdown = {};
+        monthlyExpenses.forEach(ex => {
+            if (ex.participants.some(p => p.toString() === userId.toString())) {
+                const share = ex.convertedAmount / ex.participants.length;
+                categoryBreakdown[ex.category] = (categoryBreakdown[ex.category] || 0) + share;
+            }
+        });
+
+        // Daily spending trend (last 30 days)
+        const dailySpending = {};
+        for (let i = 29; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().split('T')[0];
+            dailySpending[key] = 0;
+        }
+        monthlyExpenses.forEach(ex => {
+            if (ex.participants.some(p => p.toString() === userId.toString())) {
+                const key = new Date(ex.createdAt).toISOString().split('T')[0];
+                if (dailySpending[key] !== undefined) {
+                    dailySpending[key] += (ex.convertedAmount / ex.participants.length);
+                }
+            }
+        });
+
+        // Per-trip spending
+        const perTripSpending = trips.map(trip => {
+            const tripExpenses = allExpenses.filter(ex => ex.trip.toString() === trip._id.toString());
+            const userShare = tripExpenses.reduce((sum, ex) => {
+                if (ex.participants.some(p => p.toString() === userId.toString())) {
+                    return sum + (ex.convertedAmount / ex.participants.length);
+                }
+                return sum;
+            }, 0);
+            const totalSpent = tripExpenses.reduce((sum, ex) => sum + ex.convertedAmount, 0);
+            return {
+                tripId: trip._id,
+                tripName: trip.name,
+                baseCurrency: trip.baseCurrency,
+                status: trip.status,
+                memberCount: trip.members.length,
+                totalSpent,
+                userShare,
+                budgetPerPerson: trip.budgetPerPerson,
+            };
+        });
+
+        res.json({
+            monthlyTotal: userMonthlyTotal,
+            categoryBreakdown,
+            dailySpending,
+            perTripSpending,
+            totalTrips: trips.length,
+            activeTrips: activeTrips.length,
+            totalExpenses: allExpenses.length,
+            monthName: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
