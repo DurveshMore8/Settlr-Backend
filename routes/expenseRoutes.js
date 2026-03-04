@@ -6,7 +6,10 @@ import {
     updateExpense,
     deleteExpense,
     getAnalytics,
-    getDashboardAnalytics
+    getDashboardAnalytics,
+    createSettlement,
+    confirmSettlement,
+    getSettlements
 } from '../controllers/expenseController.js';
 
 const router = express.Router({ mergeParams: true });
@@ -22,6 +25,11 @@ router.route('/')
 
 router.get('/analytics', getAnalytics);
 
+// Settlement routes (nested under trips)
+router.route('/settlements')
+    .post(createSettlement)
+    .get(getSettlements);
+
 // Routes for specific expenses
 // These are mapped to /api/expenses in index.js for simplicity
 // But the controller also handles them
@@ -31,5 +39,10 @@ expenseStandaloneRouter.get('/dashboard', getDashboardAnalytics);
 expenseStandaloneRouter.route('/:id')
     .put(updateExpense)
     .delete(deleteExpense);
+
+// Settlement confirmation (standalone)
+export const settlementRouter = express.Router();
+settlementRouter.use(protect);
+settlementRouter.put('/:id/confirm', confirmSettlement);
 
 export default router;

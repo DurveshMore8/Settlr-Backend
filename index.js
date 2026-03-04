@@ -6,7 +6,7 @@ import connectDB from './config/db.js';
 // Route imports
 import authRoutes from './routes/authRoutes.js';
 import tripRoutes from './routes/tripRoutes.js';
-import expenseRoutes, { expenseStandaloneRouter } from './routes/expenseRoutes.js';
+import expenseRoutes, { expenseStandaloneRouter, settlementRouter } from './routes/expenseRoutes.js';
 
 dotenv.config();
 
@@ -25,6 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/trips', tripRoutes);
 app.use('/api/trips/:tripId/expenses', expenseRoutes);
 app.use('/api/expenses', expenseStandaloneRouter);
+app.use('/api/settlements', settlementRouter);
 
 // Health check
 app.get('/api/hello', (req, res) => {

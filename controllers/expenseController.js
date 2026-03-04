@@ -1,5 +1,6 @@
 import Expense from '../models/Expense.js';
 import Trip from '../models/Trip.js';
+import Settlement from '../models/Settlement.js';
 import { convertAmount } from '../utils/currency.js';
 import { simplifyDebts } from '../utils/settlement.js';
 
@@ -178,13 +179,30 @@ export const getAnalytics = async (req, res) => {
         // 4. Debt Simplification (Who pays whom)
         const suggestedSettlements = simplifyDebts(balances);
 
+        // 5. Get existing settlements
+        const settlements = await Settlement.find({ trip: tripId })
+            .populate('from', 'name email')
+            .populate('to', 'name email')
+            .sort({ createdAt: -1 });
+
+        // 6. Calculate remaining balances after confirmed settlements
+        const remainingBalances = { ...balances };
+        settlements.filter(s => s.status === 'confirmed').forEach(s => {
+            const fromId = s.from._id.toString();
+            const toId = s.to._id.toString();
+            remainingBalances[fromId] = (remainingBalances[fromId] || 0) + s.amount;
+            remainingBalances[toId] = (remainingBalances[toId] || 0) - s.amount;
+        });
+
         res.json({
             totalSpent,
             totalBudget,
             remainingBudget: totalBudget - totalSpent,
             categoryBreakdown,
             balances,
+            remainingBalances,
             suggestedSettlements,
+            settlements,
             tripDetails: {
                 name: trip.name,
                 baseCurrency: trip.baseCurrency,
@@ -292,3 +310,105 @@ export const getDashboardAnalytics = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+// ═══════════════════════════════════════
+// SETTLEMENT CONTROLLERS
+// ═══════════════════════════════════════
+
+// @desc    Create a settlement (debtor marks payment as made)
+// @route   POST /api/trips/:tripId/settlements
+export const createSettlement = async (req, res) => {
+    try {
+        const { tripId } = req.params;
+        const { to, amount, method, note } = req.body;
+        const from = req.user._id;
+
+        const trip = await Trip.findById(tripId);
+        if (!trip) {
+            return res.status(404).json({ message: 'Trip not found' });
+        }
+
+        // Verify both users are trip members
+        const isMemberFrom = trip.members.some(m => m.toString() === from.toString());
+        const isMemberTo = trip.members.some(m => m.toString() === to);
+        if (!isMemberFrom || !isMemberTo) {
+            return res.status(400).json({ message: 'Both users must be trip members' });
+        }
+
+        if (from.toString() === to) {
+            return res.status(400).json({ message: 'Cannot settle with yourself' });
+        }
+
+        const settlement = await Settlement.create({
+            trip: tripId,
+            from,
+            to,
+            amount,
+            method: method || 'Cash',
+            note: note || '',
+            status: 'pending',
+        });
+
+        const populated = await Settlement.findById(settlement._id)
+            .populate('from', 'name email')
+            .populate('to', 'name email');
+
+        res.status(201).json(populated);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Confirm a settlement (creditor confirms receipt)
+// @route   PUT /api/settlements/:id/confirm
+export const confirmSettlement = async (req, res) => {
+    try {
+        const settlement = await Settlement.findById(req.params.id);
+        if (!settlement) {
+            return res.status(404).json({ message: 'Settlement not found' });
+        }
+
+        // Only the creditor (to) can confirm
+        if (settlement.to.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Only the recipient can confirm this payment' });
+        }
+
+        if (settlement.status === 'confirmed') {
+            return res.status(400).json({ message: 'Settlement already confirmed' });
+        }
+
+        settlement.status = 'confirmed';
+        settlement.confirmedAt = new Date();
+        await settlement.save();
+
+        const populated = await Settlement.findById(settlement._id)
+            .populate('from', 'name email')
+            .populate('to', 'name email');
+
+        res.json(populated);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Get all settlements for a trip
+// @route   GET /api/trips/:tripId/settlements
+export const getSettlements = async (req, res) => {
+    try {
+        const { tripId } = req.params;
+        const trip = await Trip.findById(tripId);
+        if (!trip) {
+            return res.status(404).json({ message: 'Trip not found' });
+        }
+
+        const settlements = await Settlement.find({ trip: tripId })
+            .populate('from', 'name email')
+            .populate('to', 'name email')
+            .sort({ createdAt: -1 });
+
+        res.json(settlements);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
